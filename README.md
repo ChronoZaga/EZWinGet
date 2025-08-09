@@ -4,7 +4,7 @@ A simple app that runs in the Windows tray and enables easy WinGet application u
 
 So simple a user can use it.
 
-
+______________________________________________________________________________________________________________________
 
 If you don't have WinGet installed, install in from Microsoft:
 
@@ -14,7 +14,7 @@ Add-AppxPackage winget.msixbundle
 
 Remove-Item winget.msixbundle
 
-
+______________________________________________________________________________________________________________________
 
 If WinGet is downloading slowly, do this:
 
