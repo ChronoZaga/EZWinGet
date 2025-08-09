@@ -6,7 +6,7 @@ So simple a user can use it.
 
 ______________________________________________________________________________________________________________________
 
-## If you don't have WinGet installed, install in from Microsoft:
+## If you don't have WinGet installed, install it from Microsoft:
 
 Invoke-WebRequest -Uri https://aka.ms/getwinget -OutFile winget.msixbundle
 
