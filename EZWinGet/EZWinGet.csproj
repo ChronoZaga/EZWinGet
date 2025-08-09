@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net8.0-windows</TargetFramework>
+		<Nullable>enable</Nullable>
+		<UseWindowsForms>true</UseWindowsForms>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<ApplicationId>EZWinGet.App</ApplicationId>
+		<Console>true</Console>
+		<ApplicationIcon>EZ.ico</ApplicationIcon>
+		<FileVersion>1.0</FileVersion>
+		<Copyright>ChronoZaga</Copyright>
+	</PropertyGroup>
+	<ItemGroup>
+	  <Content Include="EZ.ico" />
+	</ItemGroup>
+	<ItemGroup>
+		<EmbeddedResource Include="EZ.ico" />
+	</ItemGroup>
+</Project>
