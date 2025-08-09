@@ -1,4 +1,4 @@
-## EZWinGet
+# EZWinGet
 
 A simple app that runs in the Windows tray and enables easy WinGet application upgrades with it's right-click menu.
 
@@ -6,7 +6,7 @@ So simple a user can use it.
 
 ______________________________________________________________________________________________________________________
 
-# If you don't have WinGet installed, install in from Microsoft:
+## If you don't have WinGet installed, install in from Microsoft:
 
 Invoke-WebRequest -Uri https://aka.ms/getwinget -OutFile winget.msixbundle
 
@@ -16,7 +16,7 @@ Remove-Item winget.msixbundle
 
 ______________________________________________________________________________________________________________________
 
-# If WinGet is downloading slowly, do this:
+## If WinGet is downloading slowly, do this:
 
 Run "winget settings"
 
