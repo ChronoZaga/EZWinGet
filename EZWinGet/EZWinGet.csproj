@@ -8,7 +8,7 @@
 		<ApplicationId>EZWinGet.App</ApplicationId>
 		<Console>true</Console>
 		<ApplicationIcon>EZ.ico</ApplicationIcon>
-		<FileVersion>1.0</FileVersion>
+		<FileVersion>1.1</FileVersion>
 		<Copyright>ChronoZaga</Copyright>
 	</PropertyGroup>
 	<ItemGroup>
