@@ -15,6 +15,8 @@ namespace EZWinGet
     {
         // Private field to hold the system tray icon
         private NotifyIcon _trayIcon;
+        // Private field for the timer to check upgrades every 8 hours
+        private System.Windows.Forms.Timer _upgradeCheckTimer;
         // Entry point for the application
         [STAThread]
         static void Main()
@@ -37,6 +39,8 @@ namespace EZWinGet
             this.ShowInTaskbar = false;
             // Log application start time to console
             Console.WriteLine("EZWinGet started at " + DateTime.Now.ToString("hh:mm tt"));
+            // Initialize the timer for periodic upgrade checks
+            InitializeUpgradeCheckTimer();
         }
         // Initializes the system tray icon and its context menu
         private void InitializeTrayIcon()
@@ -66,6 +70,18 @@ namespace EZWinGet
             // Log tray icon initialization
             Console.WriteLine("Tray icon initialized with EZ.ico");
         }
+        // Initializes the timer for periodic upgrade checks
+        private void InitializeUpgradeCheckTimer()
+        {
+            _upgradeCheckTimer = new System.Windows.Forms.Timer
+            {
+                Interval = 8 * 60 * 60 * 1000 // 8 hours in milliseconds
+                //Interval = 30000 // 30 seconds for testing purposes, change to 8 * 60 * 60 * 1000 for production
+            };
+            _upgradeCheckTimer.Tick += async (s, e) => await CheckUpgradesAsync();
+            _upgradeCheckTimer.Start();
+            Console.WriteLine("Periodic upgrade check timer initialized (every 8 hours)");
+        }
         // Retrieves the embedded icon resource
         private Icon GetEmbeddedIcon(string resourceName)
         {
@@ -89,28 +105,22 @@ namespace EZWinGet
                 return SystemIcons.Application;
             }
         }
-        // Checks for available upgrades using winget
+        // Checks for available upgrades using winget and shows output in a message box
         private async Task CheckUpgradesAsync()
         {
             // Log the start of the upgrade check
             Console.WriteLine("Checking for upgrades at " + DateTime.Now.ToString("hh:mm tt"));
             // Get list of available upgrades
-            var upgrades = await GetAvailableUpgradesAsync();
-            if (upgrades.Count > 0)
+            var output = await RunWingetCommand("upgrade --include-unknown", elevate: false, captureOutput: true);
+            // Trim leading special characters and spaces until the first alphanumeric character
+            int startIndex = 0;
+            while (startIndex < output.Length && !char.IsLetterOrDigit(output[startIndex]))
             {
-                // Log number of upgrades found
-                Console.WriteLine($"{upgrades.Count} app{(upgrades.Count > 1 ? "s" : "")} can be updated:");
-                // List each upgrade with name, ID, current version, and available version
-                foreach (var upgrade in upgrades)
-                {
-                    Console.WriteLine($"{upgrade.Name} ({upgrade.Id}): {upgrade.Current} -> {upgrade.Available}");
-                }
+                startIndex++;
             }
-            else
-            {
-                // Log if no upgrades are found
-                Console.WriteLine("No upgrades found");
-            }
+            string cleanedOutput = startIndex < output.Length ? output.Substring(startIndex) : "No output available.";
+            // Show the cleaned output in a message box with an OK button
+            MessageBox.Show(cleanedOutput, "EZWinGet - Available Upgrades?", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         // Installs all available upgrades using winget
         private async Task InstallUpgradesAsync()
@@ -118,7 +128,7 @@ namespace EZWinGet
             // Log when the Install Upgrades option is clicked
             Console.WriteLine("Install Upgrades menu option clicked at " + DateTime.Now.ToString("hh:mm tt"));
             // Run winget upgrade command with specified arguments, requiring elevation
-            await RunWingetCommand("upgrade --all -h --include-unknown --accept-package-agreements --accept-source-agreements", elevate: true);
+            await RunWingetCommand("upgrade --all -h --include-unknown --accept-package-agreements --accept-source-agreements", elevate: true, captureOutput: false, keepConsoleOpen: false, showPause: true);
         }
         // Opens the WinGet console in PowerShell
         private async Task OpenWinGetConsoleAsync()
@@ -126,7 +136,7 @@ namespace EZWinGet
             // Log when the Open WinGet Console option is clicked
             Console.WriteLine("Open WinGet Console menu option clicked at " + DateTime.Now.ToString("hh:mm tt"));
             // Run winget without arguments to show help text
-            await RunWingetCommand("", elevate: true); // Run winget without arguments for help text
+            await RunWingetCommand("", elevate: true, captureOutput: false, keepConsoleOpen: true); // Run winget without arguments for help text
         }
         // Retrieves a list of available upgrades by parsing winget output
         private async Task<List<(string Name, string Id, string Current, string Available)>> GetAvailableUpgradesAsync()
@@ -154,16 +164,19 @@ namespace EZWinGet
             return upgrades;
         }
         // Runs a winget command in a PowerShell window
-        private async Task<string> RunWingetCommand(string args, bool elevate = false)
+        private async Task<string> RunWingetCommand(string args, bool elevate = false, bool captureOutput = false, bool keepConsoleOpen = false, bool showPause = false)
         {
             // Set up process start information for PowerShell
             var startInfo = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
-                // Configure PowerShell to run winget with specified arguments
-                Arguments = $"-NoExit -Command \"$host.ui.RawUI.WindowTitle = 'EZWinGet'; winget {args}\"", // Set title and run winget
-                UseShellExecute = true,
-                CreateNoWindow = false
+                Arguments = captureOutput
+                    ? $"-NoProfile -Command \"winget {args}\""
+                    : $"-NoProfile {(keepConsoleOpen ? "-NoExit " : "")}-Command \"$host.ui.RawUI.WindowTitle = 'EZWinGet'; winget {args}{(showPause ? "; pause" : "")}\"",
+                UseShellExecute = !captureOutput, // UseShellExecute must be false to capture output
+                CreateNoWindow = captureOutput, // Hide window if capturing output
+                RedirectStandardOutput = captureOutput, // Redirect output if capturing
+                RedirectStandardError = captureOutput // Redirect error if capturing
             };
             // Request elevation if specified
             if (elevate)
@@ -174,12 +187,28 @@ namespace EZWinGet
             var process = new Process { StartInfo = startInfo };
             try
             {
-                process.Start();
-                // Wait for the process to exit
-                await Task.Run(() => process.WaitForExit());
-                // Log successful execution
-                Console.WriteLine($"Ran winget {args} in PowerShell");
-                return "PowerShell console displayed. Check window for output.";
+                if (captureOutput)
+                {
+                    // Start process and capture output
+                    process.Start();
+                    string output = await process.StandardOutput.ReadToEndAsync();
+                    string error = await process.StandardError.ReadToEndAsync();
+                    await Task.Run(() => process.WaitForExit());
+                    // Log successful execution
+                    Console.WriteLine($"Ran winget {args} in background");
+                    // Combine output and error, prioritizing non-empty error
+                    return !string.IsNullOrEmpty(error) ? error : output;
+                }
+                else
+                {
+                    // Run as before for non-captured output
+                    process.Start();
+                    // Wait for the process to exit
+                    await Task.Run(() => process.WaitForExit());
+                    // Log successful execution
+                    Console.WriteLine($"Ran winget {args} in PowerShell");
+                    return "PowerShell console displayed. Check window for output.";
+                }
             }
             catch (System.ComponentModel.Win32Exception ex)
             {
@@ -208,11 +237,16 @@ namespace EZWinGet
                 // Log error if auto-start registration fails
                 Console.WriteLine($"Failed to register auto-start: {ex.Message}");
             }
+            // Run initial upgrade check on application start
+            Task.Run(async () => await CheckUpgradesAsync());
         }
         // Handles form closing event
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             base.OnFormClosing(e);
+            // Stop and dispose of the timer
+            _upgradeCheckTimer?.Stop();
+            _upgradeCheckTimer?.Dispose();
             // Dispose of the tray icon to clean up resources
             _trayIcon.Dispose();
             // Log application exit
