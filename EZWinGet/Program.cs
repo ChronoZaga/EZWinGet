@@ -105,7 +105,7 @@ namespace EZWinGet
                 return SystemIcons.Application;
             }
         }
-        // Checks for available upgrades using winget and shows output in a message box
+        // Checks for available upgrades using winget and shows output in a resizable form
         private async Task CheckUpgradesAsync()
         {
             // Log the start of the upgrade check
@@ -119,8 +119,37 @@ namespace EZWinGet
                 startIndex++;
             }
             string cleanedOutput = startIndex < output.Length ? output.Substring(startIndex) : "No output available.";
-            // Show the cleaned output in a message box with an OK button
-            MessageBox.Show(cleanedOutput, "EZWinGet - Available Upgrades?", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            // Create a new form for displaying the output
+            using (var form = new Form())
+            {
+                form.Text = "EZWinGet - Available Upgrades?";
+                form.Size = new Size(600, 400); // Set initial size
+                form.FormBorderStyle = FormBorderStyle.Sizable; // Make the form resizable
+                form.StartPosition = FormStartPosition.CenterScreen;
+                // Create a TextBox to display the output
+                var textBox = new TextBox
+                {
+                    Multiline = true,
+                    ReadOnly = true,
+                    ScrollBars = ScrollBars.Vertical,
+                    Dock = DockStyle.Fill,
+                    Text = cleanedOutput,
+                    Font = new Font("Consolas", 10) // Use a monospaced font for better alignment
+                };
+                // Create an OK button
+                var okButton = new Button
+                {
+                    Text = "OK",
+                    Dock = DockStyle.Bottom,
+                    Height = 30
+                };
+                okButton.Click += (s, e) => form.Close();
+                // Add controls to the form
+                form.Controls.Add(textBox);
+                form.Controls.Add(okButton);
+                // Show the form as a dialog
+                form.ShowDialog();
+            }
         }
         // Installs all available upgrades using winget
         private async Task InstallUpgradesAsync()
