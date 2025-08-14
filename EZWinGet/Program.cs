@@ -17,6 +17,9 @@ namespace EZWinGet
         private NotifyIcon _trayIcon;
         // Private field for the timer to check upgrades every 8 hours
         private System.Windows.Forms.Timer _upgradeCheckTimer;
+        // Private field to track if warmup has run
+        private bool _hasWarmupRun = false;
+
         // Entry point for the application
         [STAThread]
         static void Main()
@@ -110,8 +113,12 @@ namespace EZWinGet
         {
             // Log the start of the upgrade check
             Console.WriteLine("Checking for upgrades at " + DateTime.Now.ToString("hh:mm tt"));
-            // Run winget source update silently without capturing output
-            await RunWingetCommand("source update", elevate: false, captureOutput: false, keepConsoleOpen: false, showPause: false, silent: true);
+            // Only run winget source update on the first check after launch
+            if (!_hasWarmupRun)
+            {
+                await RunWingetCommand("source update", elevate: false, captureOutput: false, keepConsoleOpen: false, showPause: false, silent: true);
+                _hasWarmupRun = true;
+            }
             // Get list of available upgrades
             var output = await RunWingetCommand("upgrade --include-unknown", elevate: false, captureOutput: true);
             // Trim leading special characters and spaces until the first alphanumeric character
