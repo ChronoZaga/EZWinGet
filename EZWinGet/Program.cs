@@ -110,6 +110,8 @@ namespace EZWinGet
         {
             // Log the start of the upgrade check
             Console.WriteLine("Checking for upgrades at " + DateTime.Now.ToString("hh:mm tt"));
+            // Run winget source update silently without capturing output
+            await RunWingetCommand("source update", elevate: false, captureOutput: false, keepConsoleOpen: false, showPause: false, silent: true);
             // Get list of available upgrades
             var output = await RunWingetCommand("upgrade --include-unknown", elevate: false, captureOutput: true);
             // Trim leading special characters and spaces until the first alphanumeric character
@@ -193,19 +195,17 @@ namespace EZWinGet
             return upgrades;
         }
         // Runs a winget command in a PowerShell window
-        private async Task<string> RunWingetCommand(string args, bool elevate = false, bool captureOutput = false, bool keepConsoleOpen = false, bool showPause = false)
+        private async Task<string> RunWingetCommand(string args, bool elevate = false, bool captureOutput = false, bool keepConsoleOpen = false, bool showPause = false, bool silent = false)
         {
             // Set up process start information for PowerShell
             var startInfo = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
-                Arguments = captureOutput
-                    ? $"-NoProfile -Command \"winget {args}\""
-                    : $"-NoProfile {(keepConsoleOpen ? "-NoExit " : "")}-Command \"$host.ui.RawUI.WindowTitle = 'EZWinGet'; winget {args}{(showPause ? "; pause" : "")}\"",
-                UseShellExecute = !captureOutput, // UseShellExecute must be false to capture output
-                CreateNoWindow = captureOutput, // Hide window if capturing output
-                RedirectStandardOutput = captureOutput, // Redirect output if capturing
-                RedirectStandardError = captureOutput // Redirect error if capturing
+                Arguments = $"-NoProfile {(keepConsoleOpen && !silent ? "-NoExit " : "")}-Command \"$host.ui.RawUI.WindowTitle = 'EZWinGet'; winget {args}{(showPause && !silent ? "; pause" : "")}\"",
+                UseShellExecute = !(captureOutput || silent), // UseShellExecute must be false for capture or silent
+                CreateNoWindow = captureOutput || silent, // Hide window if capturing output or running silently
+                RedirectStandardOutput = captureOutput || silent, // Redirect output if capturing or silent
+                RedirectStandardError = captureOutput || silent // Redirect error if capturing or silent
             };
             // Request elevation if specified
             if (elevate)
@@ -216,21 +216,23 @@ namespace EZWinGet
             var process = new Process { StartInfo = startInfo };
             try
             {
-                if (captureOutput)
+                if (captureOutput || silent)
                 {
-                    // Start process and capture output
+                    // Start process and handle output based on capture or silent mode
                     process.Start();
-                    string output = await process.StandardOutput.ReadToEndAsync();
-                    string error = await process.StandardError.ReadToEndAsync();
+                    string output = captureOutput ? await process.StandardOutput.ReadToEndAsync() : "";
+                    string error = captureOutput ? await process.StandardError.ReadToEndAsync() : "";
                     await Task.Run(() => process.WaitForExit());
                     // Log successful execution
-                    Console.WriteLine($"Ran winget {args} in background");
-                    // Combine output and error, prioritizing non-empty error
-                    return !string.IsNullOrEmpty(error) ? error : output;
+                    Console.WriteLine($"Ran winget {args} {(silent ? "silently" : "in background")}");
+                    // Return output for capture mode, otherwise indicate completion
+                    return captureOutput
+                        ? (!string.IsNullOrEmpty(error) ? error : output)
+                        : "Command executed silently.";
                 }
                 else
                 {
-                    // Run as before for non-captured output
+                    // Run as before for non-captured, non-silent output
                     process.Start();
                     // Wait for the process to exit
                     await Task.Run(() => process.WaitForExit());
