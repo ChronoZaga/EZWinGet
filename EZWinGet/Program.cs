@@ -17,9 +17,6 @@ namespace EZWinGet
         private NotifyIcon _trayIcon;
         // Private field for the timer to check upgrades every 8 hours
         private System.Windows.Forms.Timer _upgradeCheckTimer;
-        // Private field to track if warmup has run
-        private bool _hasWarmupRun = false;
-
         // Entry point for the application
         [STAThread]
         static void Main()
@@ -113,21 +110,27 @@ namespace EZWinGet
         {
             // Log the start of the upgrade check
             Console.WriteLine("Checking for upgrades at " + DateTime.Now.ToString("hh:mm tt"));
-            // Only run winget source update on the first check after launch
-            if (!_hasWarmupRun)
-            {
-                await RunWingetCommand("source update", elevate: false, captureOutput: false, keepConsoleOpen: false, showPause: false, silent: true);
-                _hasWarmupRun = true;
-            }
             // Get list of available upgrades
             var output = await RunWingetCommand("upgrade --include-unknown", elevate: false, captureOutput: true);
-            // Trim leading special characters and spaces until the first alphanumeric character
-            int startIndex = 0;
-            while (startIndex < output.Length && !char.IsLetterOrDigit(output[startIndex]))
-            {
-                startIndex++;
-            }
-            string cleanedOutput = startIndex < output.Length ? output.Substring(startIndex) : "No output available.";
+
+            // Aggressively filter: remove everything before the first occurrence of "No" or "Name"
+            int noIndex = output.IndexOf("No", StringComparison.OrdinalIgnoreCase);
+            int nameIndex = output.IndexOf("Name", StringComparison.OrdinalIgnoreCase);
+            int filterIndex = -1;
+
+            if (noIndex >= 0 && nameIndex >= 0)
+                filterIndex = Math.Min(noIndex, nameIndex);
+            else if (noIndex >= 0)
+                filterIndex = noIndex;
+            else if (nameIndex >= 0)
+                filterIndex = nameIndex;
+
+            string filteredOutput = filterIndex >= 0 ? output.Substring(filterIndex) : output;
+
+            // If nothing left after filtering, show a default message
+            if (string.IsNullOrWhiteSpace(filteredOutput))
+                filteredOutput = "No output available.";
+
             // Create a new form for displaying the output
             using (var form = new Form())
             {
@@ -142,7 +145,7 @@ namespace EZWinGet
                     ReadOnly = true,
                     ScrollBars = ScrollBars.Vertical,
                     Dock = DockStyle.Fill,
-                    Text = cleanedOutput,
+                    Text = filteredOutput,
                     Font = new Font("Consolas", 10) // Use a monospaced font for better alignment
                 };
                 // Create an OK button
@@ -202,17 +205,19 @@ namespace EZWinGet
             return upgrades;
         }
         // Runs a winget command in a PowerShell window
-        private async Task<string> RunWingetCommand(string args, bool elevate = false, bool captureOutput = false, bool keepConsoleOpen = false, bool showPause = false, bool silent = false)
+        private async Task<string> RunWingetCommand(string args, bool elevate = false, bool captureOutput = false, bool keepConsoleOpen = false, bool showPause = false)
         {
             // Set up process start information for PowerShell
             var startInfo = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
-                Arguments = $"-NoProfile {(keepConsoleOpen && !silent ? "-NoExit " : "")}-Command \"$host.ui.RawUI.WindowTitle = 'EZWinGet'; winget {args}{(showPause && !silent ? "; pause" : "")}\"",
-                UseShellExecute = !(captureOutput || silent), // UseShellExecute must be false for capture or silent
-                CreateNoWindow = captureOutput || silent, // Hide window if capturing output or running silently
-                RedirectStandardOutput = captureOutput || silent, // Redirect output if capturing or silent
-                RedirectStandardError = captureOutput || silent // Redirect error if capturing or silent
+                Arguments = captureOutput
+                    ? $"-NoProfile -Command \"winget {args}\""
+                    : $"-NoProfile {(keepConsoleOpen ? "-NoExit " : "")}-Command \"$host.ui.RawUI.WindowTitle = 'EZWinGet'; winget {args}{(showPause ? "; pause" : "")}\"",
+                UseShellExecute = !captureOutput, // UseShellExecute must be false to capture output
+                CreateNoWindow = captureOutput, // Hide window if capturing output
+                RedirectStandardOutput = captureOutput, // Redirect output if capturing
+                RedirectStandardError = captureOutput // Redirect error if capturing
             };
             // Request elevation if specified
             if (elevate)
@@ -223,23 +228,21 @@ namespace EZWinGet
             var process = new Process { StartInfo = startInfo };
             try
             {
-                if (captureOutput || silent)
+                if (captureOutput)
                 {
-                    // Start process and handle output based on capture or silent mode
+                    // Start process and capture output
                     process.Start();
-                    string output = captureOutput ? await process.StandardOutput.ReadToEndAsync() : "";
-                    string error = captureOutput ? await process.StandardError.ReadToEndAsync() : "";
+                    string output = await process.StandardOutput.ReadToEndAsync();
+                    string error = await process.StandardError.ReadToEndAsync();
                     await Task.Run(() => process.WaitForExit());
                     // Log successful execution
-                    Console.WriteLine($"Ran winget {args} {(silent ? "silently" : "in background")}");
-                    // Return output for capture mode, otherwise indicate completion
-                    return captureOutput
-                        ? (!string.IsNullOrEmpty(error) ? error : output)
-                        : "Command executed silently.";
+                    Console.WriteLine($"Ran winget {args} in background");
+                    // Combine output and error, prioritizing non-empty error
+                    return !string.IsNullOrEmpty(error) ? error : output;
                 }
                 else
                 {
-                    // Run as before for non-captured, non-silent output
+                    // Run as before for non-captured output
                     process.Start();
                     // Wait for the process to exit
                     await Task.Run(() => process.WaitForExit());
