@@ -178,7 +178,16 @@ namespace EZWinGet
                     ScrollBars = ScrollBars.Vertical,
                     Dock = DockStyle.Fill,
                     Text = filteredOutput,
-                    Font = new Font("Consolas", 10)
+                    Font = new Font("Consolas", 10),
+                    TabStop = false // Prevents focus via Tab
+                };
+
+                // Prevent selection and blinking cursor
+                form.Shown += (s, e) =>
+                {
+                    textBox.SelectionLength = 0;
+                    textBox.SelectionStart = 0;
+                    form.ActiveControl = null; // Remove focus from the TextBox
                 };
 
                 var okButton = new Button
