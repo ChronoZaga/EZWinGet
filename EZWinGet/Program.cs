@@ -15,11 +15,13 @@ namespace EZWinGet
     {
         private NotifyIcon _trayIcon;
         private System.Windows.Forms.Timer _upgradeCheckTimer;
+        private Form _currentUpgradePopup; // Track the current popup
 
         // Settings fields
         private int _updateIntervalHours = 8;
         private bool _showExitOption = true;
         private bool _showWinGetConsoleOption = true;
+        private bool _checkUpdatesOnUnlock = true; // NEW SETTING
         private readonly string _iniPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini");
 
         [STAThread]
@@ -38,6 +40,29 @@ namespace EZWinGet
             this.ShowInTaskbar = false;
             Console.WriteLine("EZWinGet started at " + DateTime.Now.ToString("hh:mm tt"));
             InitializeUpgradeCheckTimer();
+
+            // Subscribe to session switch events
+            SystemEvents.SessionSwitch += OnSessionSwitch;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                SystemEvents.SessionSwitch -= OnSessionSwitch;
+                _upgradeCheckTimer?.Dispose();
+                _trayIcon?.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+
+        private void OnSessionSwitch(object sender, SessionSwitchEventArgs e)
+        {
+            if (_checkUpdatesOnUnlock && e.Reason == SessionSwitchReason.SessionUnlock)
+            {
+                // Check for upgrades when the workstation is unlocked
+                Task.Run(async () => await CheckUpgradesAsync());
+            }
         }
 
         private void LoadOrCreateSettings()
@@ -50,11 +75,13 @@ namespace EZWinGet
                     "[Settings]",
                     "UpdateIntervalHours=8",
                     "ShowExitOption=true",
-                    "ShowWinGetConsoleOption=true"
+                    "ShowWinGetConsoleOption=true",
+                    "CheckUpdatesOnUnlock=true" // NEW DEFAULT
                 });
                 _updateIntervalHours = 8;
                 _showExitOption = true;
                 _showWinGetConsoleOption = true;
+                _checkUpdatesOnUnlock = true;
             }
             else
             {
@@ -75,6 +102,11 @@ namespace EZWinGet
                     {
                         var value = line.Substring("ShowWinGetConsoleOption=".Length).Trim().ToLowerInvariant();
                         _showWinGetConsoleOption = value == "true" || value == "1" || value == "yes";
+                    }
+                    else if (line.StartsWith("CheckUpdatesOnUnlock=", StringComparison.OrdinalIgnoreCase)) // NEW SETTING
+                    {
+                        var value = line.Substring("CheckUpdatesOnUnlock=".Length).Trim().ToLowerInvariant();
+                        _checkUpdatesOnUnlock = value == "true" || value == "1" || value == "yes";
                     }
                 }
             }
@@ -131,6 +163,25 @@ namespace EZWinGet
         private async Task CheckUpgradesAsync()
         {
             Console.WriteLine("Checking for upgrades at " + DateTime.Now.ToString("hh:mm tt"));
+
+            // Close previous popup if it exists
+            if (_currentUpgradePopup != null && !_currentUpgradePopup.IsDisposed)
+            {
+                try
+                {
+                    _currentUpgradePopup.Invoke(new Action(() =>
+                    {
+                        _currentUpgradePopup.Close();
+                        _currentUpgradePopup.Dispose();
+                    }));
+                }
+                catch
+                {
+                    _currentUpgradePopup.Dispose();
+                }
+                _currentUpgradePopup = null;
+            }
+
             var output = await RunWingetCommand("upgrade --include-unknown", elevate: false, captureOutput: true);
 
             int noIndex = output.IndexOf("No", StringComparison.OrdinalIgnoreCase);
@@ -164,44 +215,53 @@ namespace EZWinGet
             int screenWidth = Screen.PrimaryScreen.WorkingArea.Width;
             int finalWidth = Math.Min(desiredWidth, screenWidth - 40);
 
-            using (var form = new Form())
+            var form = new Form
             {
-                form.Text = "EZWinGet - Available Upgrades?";
-                form.Size = new Size(finalWidth, 400);
-                form.FormBorderStyle = FormBorderStyle.Sizable;
-                form.StartPosition = FormStartPosition.CenterScreen;
+                Text = "EZWinGet - Available Upgrades?",
+                Size = new Size(finalWidth, 400),
+                FormBorderStyle = FormBorderStyle.Sizable,
+                StartPosition = FormStartPosition.CenterScreen,
+                TopMost = true
+            };
 
-                var textBox = new TextBox
-                {
-                    Multiline = true,
-                    ReadOnly = true,
-                    ScrollBars = ScrollBars.Vertical,
-                    Dock = DockStyle.Fill,
-                    Text = filteredOutput,
-                    Font = new Font("Consolas", 10),
-                    TabStop = false // Prevents focus via Tab
-                };
+            var textBox = new TextBox
+            {
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Vertical,
+                Dock = DockStyle.Fill,
+                Text = filteredOutput,
+                Font = new Font("Consolas", 10),
+                TabStop = false
+            };
 
-                // Prevent selection and blinking cursor
-                form.Shown += (s, e) =>
-                {
-                    textBox.SelectionLength = 0;
-                    textBox.SelectionStart = 0;
-                    form.ActiveControl = null; // Remove focus from the TextBox
-                };
+            form.Shown += (s, e) =>
+            {
+                textBox.SelectionLength = 0;
+                textBox.SelectionStart = 0;
+                form.ActiveControl = null;
+                form.TopMost = true;      // Re-assert TopMost
+                form.Activate();          // Request activation
+                form.BringToFront();      // Bring to front
+                form.Focus();             // Request focus
+            };
 
-                var okButton = new Button
-                {
-                    Text = "OK",
-                    Dock = DockStyle.Bottom,
-                    Height = 30
-                };
-                okButton.Click += (s, e) => form.Close();
+            var okButton = new Button
+            {
+                Text = "OK",
+                Dock = DockStyle.Bottom,
+                Height = 30
+            };
+            okButton.Click += (s, e) => form.Close();
 
-                form.Controls.Add(textBox);
-                form.Controls.Add(okButton);
-                form.ShowDialog();
-            }
+            form.Controls.Add(textBox);
+            form.Controls.Add(okButton);
+
+            _currentUpgradePopup = form;
+
+            form.ShowDialog();
+
+            _currentUpgradePopup = null;
         }
 
         private async Task InstallUpgradesAsync()
