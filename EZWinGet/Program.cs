@@ -8,6 +8,7 @@ using Microsoft.Win32;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
+using System.Threading; // Add this at the top
 
 namespace EZWinGet
 {
@@ -27,9 +28,20 @@ namespace EZWinGet
         [STAThread]
         static void Main()
         {
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new Program());
+            bool createdNew;
+            using (var mutex = new Mutex(true, "EZWinGet_SingleInstanceMutex", out createdNew))
+            {
+                if (!createdNew)
+                {
+                    // Another instance is already running
+                    MessageBox.Show("EZWinGet is already running.", "EZWinGet", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                Application.Run(new Program());
+            }
         }
 
         public Program()
@@ -73,10 +85,10 @@ namespace EZWinGet
                 File.WriteAllLines(_iniPath, new[]
                 {
                     "[Settings]",
-                    "UpdateIntervalHours=8",
+                    "UpdateIntervalHours=0",
                     "ShowExitOption=true",
                     "ShowWinGetConsoleOption=true",
-                    "CheckUpdatesOnUnlock=true" // NEW DEFAULT
+                    "CheckUpdatesOnUnlock=true"
                 });
                 _updateIntervalHours = 8;
                 _showExitOption = true;
@@ -91,7 +103,7 @@ namespace EZWinGet
                     if (line.StartsWith("UpdateIntervalHours=", StringComparison.OrdinalIgnoreCase))
                     {
                         if (int.TryParse(line.Substring("UpdateIntervalHours=".Length), out int hours))
-                            _updateIntervalHours = Math.Max(1, hours);
+                            _updateIntervalHours = hours; // Allow 0
                     }
                     else if (line.StartsWith("ShowExitOption=", StringComparison.OrdinalIgnoreCase))
                     {
@@ -103,7 +115,7 @@ namespace EZWinGet
                         var value = line.Substring("ShowWinGetConsoleOption=".Length).Trim().ToLowerInvariant();
                         _showWinGetConsoleOption = value == "true" || value == "1" || value == "yes";
                     }
-                    else if (line.StartsWith("CheckUpdatesOnUnlock=", StringComparison.OrdinalIgnoreCase)) // NEW SETTING
+                    else if (line.StartsWith("CheckUpdatesOnUnlock=", StringComparison.OrdinalIgnoreCase))
                     {
                         var value = line.Substring("CheckUpdatesOnUnlock=".Length).Trim().ToLowerInvariant();
                         _checkUpdatesOnUnlock = value == "true" || value == "1" || value == "yes";
@@ -133,13 +145,20 @@ namespace EZWinGet
 
         private void InitializeUpgradeCheckTimer()
         {
-            _upgradeCheckTimer = new System.Windows.Forms.Timer
+            if (_updateIntervalHours > 0)
             {
-                Interval = _updateIntervalHours * 60 * 60 * 1000
-            };
-            _upgradeCheckTimer.Tick += async (s, e) => await CheckUpgradesAsync();
-            _upgradeCheckTimer.Start();
-            Console.WriteLine($"Periodic upgrade check timer initialized (every {_updateIntervalHours} hours)");
+                _upgradeCheckTimer = new System.Windows.Forms.Timer
+                {
+                    Interval = _updateIntervalHours * 60 * 60 * 1000
+                };
+                _upgradeCheckTimer.Tick += async (s, e) => await CheckUpgradesAsync();
+                _upgradeCheckTimer.Start();
+                Console.WriteLine($"Periodic upgrade check timer initialized (every {_updateIntervalHours} hours)");
+            }
+            else
+            {
+                Console.WriteLine("Periodic upgrade check timer disabled (UpdateIntervalHours=0)");
+            }
         }
 
         private Icon GetEmbeddedIcon(string resourceName)
