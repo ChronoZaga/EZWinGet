@@ -265,6 +265,20 @@ namespace EZWinGet
                 form.Focus();             // Request focus
             };
 
+            // Install Upgrades button
+            var installButton = new Button
+            {
+                Text = "Install Upgrades",
+                Dock = DockStyle.Bottom,
+                Height = 30
+            };
+            installButton.Click += async (s, e) =>
+            {
+                form.Close();
+                await InstallUpgradesAsync();
+            };
+
+            // OK button
             var okButton = new Button
             {
                 Text = "OK",
@@ -274,6 +288,7 @@ namespace EZWinGet
             okButton.Click += (s, e) => form.Close();
 
             form.Controls.Add(textBox);
+            form.Controls.Add(installButton);
             form.Controls.Add(okButton);
 
             _currentUpgradePopup = form;

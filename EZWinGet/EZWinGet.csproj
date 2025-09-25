@@ -8,10 +8,10 @@
 		<ApplicationId>EZWinGet.App</ApplicationId>
 		<Console>true</Console>
 		<ApplicationIcon>EZ.ico</ApplicationIcon>
-		<FileVersion>1.4</FileVersion>
+		<FileVersion>1.5</FileVersion>
 		<Copyright>ChronoZaga</Copyright>
-		<AssemblyVersion>1.4</AssemblyVersion>
-		<Version>1.4</Version>
+		<AssemblyVersion>1.5</AssemblyVersion>
+		<Version>1.5</Version>
 	</PropertyGroup>
 	<ItemGroup>
 	  <Content Include="EZ.ico" />
