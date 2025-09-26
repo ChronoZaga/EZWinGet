@@ -283,7 +283,7 @@ namespace EZWinGet
             {
                 Text = "OK",
                 Dock = DockStyle.Bottom,
-                Height = 30
+                Height = 60
             };
             okButton.Click += (s, e) => form.Close();
 
