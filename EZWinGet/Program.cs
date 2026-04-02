@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -8,7 +8,7 @@ using Microsoft.Win32;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
-using System.Threading; // Add this at the top
+using System.Threading;
 
 namespace EZWinGet
 {
@@ -16,13 +16,15 @@ namespace EZWinGet
     {
         private NotifyIcon _trayIcon;
         private System.Windows.Forms.Timer _upgradeCheckTimer;
-        private Form _currentUpgradePopup; // Track the current popup
+        private Form _currentUpgradePopup;
 
         // Settings fields
         private int _updateIntervalHours = 8;
         private bool _showExitOption = true;
         private bool _showWinGetConsoleOption = true;
-        private bool _checkUpdatesOnUnlock = true; // NEW SETTING
+        private bool _checkUpdatesOnUnlock = true;
+        private bool _showBlockUnblockOption = true;   // NEW SETTING
+
         private readonly string _iniPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini");
 
         [STAThread]
@@ -33,11 +35,9 @@ namespace EZWinGet
             {
                 if (!createdNew)
                 {
-                    // Another instance is already running
                     MessageBox.Show("EZWinGet is already running.", "EZWinGet", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
-
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 Application.Run(new Program());
@@ -52,8 +52,6 @@ namespace EZWinGet
             this.ShowInTaskbar = false;
             Console.WriteLine("EZWinGet started at " + DateTime.Now.ToString("hh:mm tt"));
             InitializeUpgradeCheckTimer();
-
-            // Subscribe to session switch events
             SystemEvents.SessionSwitch += OnSessionSwitch;
         }
 
@@ -72,7 +70,6 @@ namespace EZWinGet
         {
             if (_checkUpdatesOnUnlock && e.Reason == SessionSwitchReason.SessionUnlock)
             {
-                // Check for upgrades when the workstation is unlocked
                 Task.Run(async () => await CheckUpgradesAsync());
             }
         }
@@ -81,29 +78,30 @@ namespace EZWinGet
         {
             if (!File.Exists(_iniPath))
             {
-                // Create INI with default values
+                // Create default INI with new setting
                 File.WriteAllLines(_iniPath, new[]
                 {
                     "[Settings]",
                     "UpdateIntervalHours=0",
                     "ShowExitOption=true",
                     "ShowWinGetConsoleOption=true",
-                    "CheckUpdatesOnUnlock=true"
+                    "CheckUpdatesOnUnlock=true",
+                    "ShowBlockUnblockOption=true"   // NEW
                 });
                 _updateIntervalHours = 8;
                 _showExitOption = true;
                 _showWinGetConsoleOption = true;
                 _checkUpdatesOnUnlock = true;
+                _showBlockUnblockOption = true;
             }
             else
             {
-                // Read settings
                 foreach (var line in File.ReadAllLines(_iniPath))
                 {
                     if (line.StartsWith("UpdateIntervalHours=", StringComparison.OrdinalIgnoreCase))
                     {
                         if (int.TryParse(line.Substring("UpdateIntervalHours=".Length), out int hours))
-                            _updateIntervalHours = hours; // Allow 0
+                            _updateIntervalHours = hours;
                     }
                     else if (line.StartsWith("ShowExitOption=", StringComparison.OrdinalIgnoreCase))
                     {
@@ -120,6 +118,11 @@ namespace EZWinGet
                         var value = line.Substring("CheckUpdatesOnUnlock=".Length).Trim().ToLowerInvariant();
                         _checkUpdatesOnUnlock = value == "true" || value == "1" || value == "yes";
                     }
+                    else if (line.StartsWith("ShowBlockUnblockOption=", StringComparison.OrdinalIgnoreCase))   // NEW
+                    {
+                        var value = line.Substring("ShowBlockUnblockOption=".Length).Trim().ToLowerInvariant();
+                        _showBlockUnblockOption = value == "true" || value == "1" || value == "yes";
+                    }
                 }
             }
         }
@@ -132,13 +135,21 @@ namespace EZWinGet
                 Visible = true,
                 Text = "EZWinGet"
             };
+
             var contextMenu = new ContextMenuStrip();
             contextMenu.Items.Add("Check for Upgrades Now", null, async (s, e) => await CheckUpgradesAsync());
             contextMenu.Items.Add("Install Upgrades", null, async (s, e) => await InstallUpgradesAsync());
+
+            // Show/hide controlled by INI
+            if (_showBlockUnblockOption)
+                contextMenu.Items.Add("Block/UnBlock Upgrade", null, (s, e) => BlockUnblockUpgrade());
+
             if (_showWinGetConsoleOption)
                 contextMenu.Items.Add("Open WinGet Console", null, async (s, e) => await OpenWinGetConsoleAsync());
+
             if (_showExitOption)
                 contextMenu.Items.Add("Exit", null, (s, e) => Application.Exit());
+
             _trayIcon.ContextMenuStrip = contextMenu;
             Console.WriteLine("Tray icon initialized with EZ.ico");
         }
@@ -183,7 +194,6 @@ namespace EZWinGet
         {
             Console.WriteLine("Checking for upgrades at " + DateTime.Now.ToString("hh:mm tt"));
 
-            // Close previous popup if it exists
             if (_currentUpgradePopup != null && !_currentUpgradePopup.IsDisposed)
             {
                 try
@@ -212,6 +222,7 @@ namespace EZWinGet
                 filterIndex = noIndex;
             else if (nameIndex >= 0)
                 filterIndex = nameIndex;
+
             string filteredOutput = filterIndex >= 0 ? output.Substring(filterIndex) : output;
             if (string.IsNullOrWhiteSpace(filteredOutput))
                 filteredOutput = "No output available.";
@@ -228,6 +239,7 @@ namespace EZWinGet
                         maxLineWidth = lineWidth;
                 }
             }
+
             int padding = 40;
             int minWidth = 400;
             int desiredWidth = Math.Max(minWidth, maxLineWidth + padding);
@@ -259,13 +271,12 @@ namespace EZWinGet
                 textBox.SelectionLength = 0;
                 textBox.SelectionStart = 0;
                 form.ActiveControl = null;
-                form.TopMost = true;      // Re-assert TopMost
-                form.Activate();          // Request activation
-                form.BringToFront();      // Bring to front
-                form.Focus();             // Request focus
+                form.TopMost = true;
+                form.Activate();
+                form.BringToFront();
+                form.Focus();
             };
 
-            // Install Upgrades button
             var installButton = new Button
             {
                 Text = "Install Upgrades",
@@ -278,7 +289,6 @@ namespace EZWinGet
                 await InstallUpgradesAsync();
             };
 
-            // OK button
             var okButton = new Button
             {
                 Text = "OK",
@@ -292,9 +302,7 @@ namespace EZWinGet
             form.Controls.Add(okButton);
 
             _currentUpgradePopup = form;
-
             form.ShowDialog();
-
             _currentUpgradePopup = null;
         }
 
@@ -310,21 +318,127 @@ namespace EZWinGet
             await RunWingetCommand("", elevate: true, captureOutput: false, keepConsoleOpen: true);
         }
 
-        private async Task<List<(string Name, string Id, string Current, string Available)>> GetAvailableUpgradesAsync()
+        // ====================== SIMPLE BLOCK/UNBLOCK ======================
+        private void BlockUnblockUpgrade()
         {
-            var output = await RunWingetCommand("upgrade --include-unknown");
-            var upgrades = new List<(string Name, string Id, string Current, string Available)>();
-            var lines = output.Split('\n');
-            for (int i = 2; i < lines.Length; i++)
+            Console.WriteLine("Block/UnBlock Upgrade clicked at " + DateTime.Now.ToString("hh:mm tt"));
+
+            var psi = new ProcessStartInfo
             {
-                var line = lines[i].Trim();
-                if (string.IsNullOrWhiteSpace(line) || line.Contains("No applicable update")) continue;
-                var parts = Regex.Split(line, @"\s{2,}");
-                if (parts.Length >= 4)
-                    upgrades.Add((parts[0], parts[1], parts[2], parts[3]));
+                FileName = "powershell.exe",
+                Verb = "runas",
+                UseShellExecute = true,
+                Arguments = "-NoProfile -NoExit -Command \"" +
+                            "$host.UI.RawUI.WindowTitle = 'EZWinGet - Block / UnBlock Upgrade';" +
+                            "Clear-Host;" +
+                            "Write-Host '=== Installed Apps ===' -ForegroundColor Cyan;" +
+                            "winget list;" +
+                            "Write-Host '';" +
+                            "Write-Host '=== Blocked Apps ===' -ForegroundColor Cyan;" +
+                            "winget pin list;" +
+                            "Write-Host '';" +
+                            "Write-Host 'Use the popup window to Block or Unblock apps.' -ForegroundColor Yellow;"
+            };
+
+            Process consoleProcess = null;
+            try
+            {
+                consoleProcess = Process.Start(psi);
+
+                while (true)
+                {
+                    using (var form = new Form
+                    {
+                        Text = "Block / UnBlock App",
+                        Size = new Size(520, 230),
+                        StartPosition = FormStartPosition.CenterScreen,
+                        FormBorderStyle = FormBorderStyle.FixedDialog,
+                        MaximizeBox = false,
+                        MinimizeBox = false
+                    })
+                    {
+                        var label = new Label
+                        {
+                            Text = "Enter exact App ID:",
+                            Location = new Point(20, 20),
+                            AutoSize = true
+                        };
+
+                        var txtId = new TextBox
+                        {
+                            Location = new Point(20, 50),
+                            Width = 460,
+                            Font = new Font("Consolas", 10)
+                        };
+
+                        var btnBlock = new Button
+                        {
+                            Text = "Block",
+                            Location = new Point(20, 90),
+                            Width = 120,
+                            Height = 35
+                        };
+
+                        var btnUnblock = new Button
+                        {
+                            Text = "Unblock",
+                            Location = new Point(160, 90),
+                            Width = 120,
+                            Height = 35
+                        };
+
+                        var btnClose = new Button
+                        {
+                            Text = "Close",
+                            Location = new Point(300, 90),
+                            Width = 100,
+                            Height = 35
+                        };
+
+                        btnBlock.Click += (s, e) =>
+                        {
+                            string id = txtId.Text.Trim();
+                            if (!string.IsNullOrEmpty(id))
+                            {
+                                RunWingetCommand($"pin add --id \"{id}\" --blocking", elevate: true, captureOutput: false);
+                                MessageBox.Show($"Blocked: {id}", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            }
+                        };
+
+                        btnUnblock.Click += (s, e) =>
+                        {
+                            string id = txtId.Text.Trim();
+                            if (!string.IsNullOrEmpty(id))
+                            {
+                                RunWingetCommand($"pin remove --id \"{id}\"", elevate: true, captureOutput: false);
+                                MessageBox.Show($"Unblocked: {id}", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            }
+                        };
+
+                        btnClose.Click += (s, e) => form.Close();
+
+                        form.Controls.Add(label);
+                        form.Controls.Add(txtId);
+                        form.Controls.Add(btnBlock);
+                        form.Controls.Add(btnUnblock);
+                        form.Controls.Add(btnClose);
+
+                        form.CancelButton = btnClose;
+
+                        if (form.ShowDialog() != DialogResult.OK)
+                            break;
+                    }
+                }
             }
-            Console.WriteLine($"Parsed {upgrades.Count} upgrades from winget output");
-            return upgrades;
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error: {ex.Message}");
+                MessageBox.Show("Failed to start the Block/UnBlock tool.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                try { consoleProcess?.Kill(); } catch { }
+            }
         }
 
         private async Task<string> RunWingetCommand(string args, bool elevate = false, bool captureOutput = false, bool keepConsoleOpen = false, bool showPause = false)
@@ -353,14 +467,12 @@ namespace EZWinGet
                     string output = await process.StandardOutput.ReadToEndAsync();
                     string error = await process.StandardError.ReadToEndAsync();
                     await Task.Run(() => process.WaitForExit());
-                    Console.WriteLine($"Ran winget {args} in background");
                     return !string.IsNullOrEmpty(error) ? error : output;
                 }
                 else
                 {
                     process.Start();
                     await Task.Run(() => process.WaitForExit());
-                    Console.WriteLine($"Ran winget {args} in PowerShell");
                     return "PowerShell console displayed. Check window for output.";
                 }
             }
