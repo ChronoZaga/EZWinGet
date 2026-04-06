@@ -64,7 +64,7 @@ ShowBlockUnblockOption=true
 
 - Uses an embedded resource for the tray icon
 - All winget operations that require elevation will prompt UAC
-- Designed to be minimal and non-intrusive
+- Designed to be minimal and easy to use, with easy to read code
 
 ---
 
