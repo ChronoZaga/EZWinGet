@@ -15,11 +15,11 @@ EZWinGet runs quietly in the system tray and gives you quick access to check for
   - Periodic timer (configurable)
   - Optional check when the user unlocks their PC
 - Auto-starts with Windows
-- Fully configurable via `settings.ini`
+- Fully configurable via `EZWinGet.ini`
 
 ## Configuration
 
-On first run, the app creates a `settings.ini` file in the same folder. You can edit it to change behavior:
+On first run, the app creates an `EZWinGet.ini` file in the same folder. You can edit it to change behavior:
 
 [Settings]
 UpdateIntervalHours=8
@@ -51,12 +51,12 @@ ShowBlockUnblockOption=true
 
 - Windows 10 or 11
 - winget installed (included with App Installer)
-- .NET Framework
+- .NET Framework 4.8 (built into Windows 10 and 11)
 
 ## Installation
 
-1. Download the compiled EXE, DLL, JSON, and (optional) INI
-2. Put all files in the same folder
+1. Download the compiled EXE (and optional EZWinGet.ini)
+2. Put the files in the same folder
 3. Run `EZWinGet.exe`
 4. The app will create the settings file and add itself to startup
 

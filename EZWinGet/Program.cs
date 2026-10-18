@@ -7,6 +7,7 @@ using System.Windows.Forms;
 using Microsoft.Win32;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 
@@ -25,7 +26,7 @@ namespace EZWinGet
         private bool _checkUpdatesOnUnlock = true;
         private bool _showBlockUnblockOption = true;   // NEW SETTING
 
-        private readonly string _iniPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini");
+        private readonly string _iniPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "EZWinGet.ini");
 
         [STAThread]
         static void Main()
@@ -76,6 +77,13 @@ namespace EZWinGet
 
         private void LoadOrCreateSettings()
         {
+            // Carry over settings from the old settings.ini name, if present
+            string oldIniPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini");
+            if (!File.Exists(_iniPath) && File.Exists(oldIniPath))
+            {
+                try { File.Move(oldIniPath, _iniPath); } catch { }
+            }
+
             if (!File.Exists(_iniPath))
             {
                 // Create default INI with new setting
@@ -190,6 +198,69 @@ namespace EZWinGet
             }
         }
 
+        // ====================== DARK MODE ======================
+        private static readonly Color DarkBack = Color.FromArgb(32, 32, 32);
+        private static readonly Color DarkControl = Color.FromArgb(45, 45, 45);
+        private static readonly Color DarkHover = Color.FromArgb(62, 62, 62);
+        private static readonly Color DarkPressed = Color.FromArgb(75, 75, 75);
+        private static readonly Color DarkBorder = Color.FromArgb(90, 90, 90);
+        private static readonly Color DarkText = Color.FromArgb(230, 230, 230);
+
+        // Upgrade check output text: console font
+        private static readonly Font OutputFont = new Font("Consolas", 12);
+
+        private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
+        [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
+        private static extern int SetWindowTheme(IntPtr hWnd, string pszSubAppName, string? pszSubIdList);
+
+        // Runs the action once the control has a window handle (now, if it already has one)
+        private static void WhenHandleCreated(Control control, Action action)
+        {
+            if (control.IsHandleCreated)
+                action();
+            else
+                control.HandleCreated += (s, e) => action();
+        }
+
+        // Dark colors for the form and its controls, plus a dark title bar and scrollbars
+        private static void ApplyDarkMode(Form form)
+        {
+            form.BackColor = DarkBack;
+            form.ForeColor = DarkText;
+            WhenHandleCreated(form, () =>
+            {
+                int useDark = 1;
+                DwmSetWindowAttribute(form.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref useDark, sizeof(int));
+            });
+
+            foreach (Control control in form.Controls)
+            {
+                control.ForeColor = DarkText;
+                if (control is Button button)
+                {
+                    button.FlatStyle = FlatStyle.Flat;
+                    button.BackColor = DarkControl;
+                    button.FlatAppearance.BorderColor = DarkBorder;
+                    button.FlatAppearance.MouseOverBackColor = DarkHover;
+                    button.FlatAppearance.MouseDownBackColor = DarkPressed;
+                }
+                else if (control is TextBox textBox)
+                {
+                    textBox.BackColor = DarkControl;
+                    textBox.BorderStyle = BorderStyle.FixedSingle;
+                    WhenHandleCreated(textBox, () => SetWindowTheme(textBox.Handle, "DarkMode_Explorer", null));
+                }
+                else
+                {
+                    control.BackColor = DarkBack;
+                }
+            }
+        }
+
         private async Task CheckUpgradesAsync()
         {
             Console.WriteLine("Checking for upgrades at " + DateTime.Now.ToString("hh:mm tt"));
@@ -226,15 +297,16 @@ namespace EZWinGet
             string filteredOutput = filterIndex >= 0 ? output.Substring(filterIndex) : output;
             if (string.IsNullOrWhiteSpace(filteredOutput))
                 filteredOutput = "No output available.";
+            else if (filteredOutput.Trim() == "No installed package found matching input criteria.")
+                filteredOutput = "No updates found for installed packages.";
 
             var lines = filteredOutput.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
             int maxLineWidth = 0;
             using (var g = Graphics.FromHwnd(IntPtr.Zero))
             {
-                var font = new Font("Consolas", 10);
                 foreach (var line in lines)
                 {
-                    int lineWidth = (int)g.MeasureString(line, font).Width;
+                    int lineWidth = (int)g.MeasureString(line, OutputFont).Width;
                     if (lineWidth > maxLineWidth)
                         maxLineWidth = lineWidth;
                 }
@@ -245,11 +317,13 @@ namespace EZWinGet
             int desiredWidth = Math.Max(minWidth, maxLineWidth + padding);
             int screenWidth = Screen.PrimaryScreen.WorkingArea.Width;
             int finalWidth = Math.Min(desiredWidth, screenWidth - 40);
+            int finalHeight = Math.Min(600, Screen.PrimaryScreen.WorkingArea.Height - 40);
 
             var form = new Form
             {
                 Text = "EZWinGet - Available Upgrades?",
-                Size = new Size(finalWidth, 400),
+                Icon = GetEmbeddedIcon("EZWinGet.EZ.ico"),
+                Size = new Size(finalWidth, finalHeight),
                 FormBorderStyle = FormBorderStyle.Sizable,
                 StartPosition = FormStartPosition.CenterScreen,
                 TopMost = true
@@ -262,7 +336,7 @@ namespace EZWinGet
                 ScrollBars = ScrollBars.Vertical,
                 Dock = DockStyle.Fill,
                 Text = filteredOutput,
-                Font = new Font("Consolas", 10),
+                Font = OutputFont,
                 TabStop = false
             };
 
@@ -281,7 +355,7 @@ namespace EZWinGet
             {
                 Text = "Install Upgrades",
                 Dock = DockStyle.Bottom,
-                Height = 30
+                Height = 40
             };
             installButton.Click += async (s, e) =>
             {
@@ -300,6 +374,7 @@ namespace EZWinGet
             form.Controls.Add(textBox);
             form.Controls.Add(installButton);
             form.Controls.Add(okButton);
+            ApplyDarkMode(form);
 
             _currentUpgradePopup = form;
             form.ShowDialog();
@@ -424,6 +499,7 @@ namespace EZWinGet
                         form.Controls.Add(btnClose);
 
                         form.CancelButton = btnClose;
+                        ApplyDarkMode(form);
 
                         if (form.ShowDialog() != DialogResult.OK)
                             break;
@@ -441,6 +517,9 @@ namespace EZWinGet
             }
         }
 
+        // Start interactive consoles at C:\ with a plain "C:\>" style prompt (drive only, no folder)
+        private const string ConsolePromptSetup = "Set-Location C:\\; function prompt { $PWD.Drive.Name + ':\\> ' }; ";
+
         private async Task<string> RunWingetCommand(string args, bool elevate = false, bool captureOutput = false, bool keepConsoleOpen = false, bool showPause = false)
         {
             var startInfo = new ProcessStartInfo
@@ -448,7 +527,7 @@ namespace EZWinGet
                 FileName = "powershell.exe",
                 Arguments = captureOutput
                     ? $"-NoProfile -Command \"winget {args}\""
-                    : $"-NoProfile {(keepConsoleOpen ? "-NoExit " : "")}-Command \"$host.ui.RawUI.WindowTitle = 'EZWinGet'; winget {args}{(showPause ? "; pause" : "")}\"",
+                    : $"-NoProfile {(keepConsoleOpen ? "-NoExit " : "")}-Command \"$host.ui.RawUI.WindowTitle = 'EZWinGet'; {(keepConsoleOpen ? ConsolePromptSetup : "")}winget {args}{(showPause ? "; pause" : "")}\"",
                 UseShellExecute = !captureOutput,
                 CreateNoWindow = captureOutput,
                 RedirectStandardOutput = captureOutput,

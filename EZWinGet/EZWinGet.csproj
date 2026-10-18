@@ -1,21 +1,23 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
-		<TargetFramework>net8.0-windows</TargetFramework>
+		<!-- .NET Framework 4.8 ships with Windows 10/11, so Build produces a single EXE (no DLL or runtimeconfig.json) -->
+		<TargetFramework>net48</TargetFramework>
+		<LangVersion>latest</LangVersion>
 		<Nullable>enable</Nullable>
 		<UseWindowsForms>true</UseWindowsForms>
 		<ImplicitUsings>enable</ImplicitUsings>
-		<ApplicationId>EZWinGet.App</ApplicationId>
-		<Console>true</Console>
 		<ApplicationIcon>EZ.ico</ApplicationIcon>
-		<FileVersion>1.6</FileVersion>
+		<ApplicationManifest>app.manifest</ApplicationManifest>
+		<!-- Embed debug symbols in the EXE instead of writing a separate PDB -->
+		<DebugType>embedded</DebugType>
+		<!-- Skip the EZWinGet.exe.config file; the EXE already targets the .NET 4.x runtime -->
+		<GenerateSupportedRuntime>false</GenerateSupportedRuntime>
+		<FileVersion>1.7</FileVersion>
 		<Copyright>ChronoZaga</Copyright>
-		<AssemblyVersion>1.6</AssemblyVersion>
-		<Version>1.6</Version>
+		<AssemblyVersion>1.7</AssemblyVersion>
+		<Version>1.7</Version>
 	</PropertyGroup>
-	<ItemGroup>
-	  <Content Include="EZ.ico" />
-	</ItemGroup>
 	<ItemGroup>
 		<EmbeddedResource Include="EZ.ico" />
 	</ItemGroup>
