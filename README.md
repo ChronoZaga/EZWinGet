@@ -32,7 +32,7 @@ ShowBlockUnblockOption=true
 
 | Setting                   | Description                                      | Default |
 |---------------------------|--------------------------------------------------|---------|
-| UpdateIntervalHours       | Hours between automatic checks (0 = disabled)    | 8       |
+| UpdateIntervalHours       | Hours between automatic checks (0 = disabled)    | 0       |
 | ShowExitOption            | Show "Exit" in tray menu                         | true    |
 | ShowWinGetConsoleOption   | Show "Open WinGet Console" in tray menu          | true    |
 | CheckUpdatesOnUnlock      | Check upgrades when PC is unlocked               | true    |
@@ -43,22 +43,21 @@ ShowBlockUnblockOption=true
 - Starts minimized to the tray
 - Automatically registers itself to run on Windows startup
 - Performs an initial upgrade check on launch
-- Shows upgrade results in a readable window with monospace font
+- Shows upgrade results in a readable window
 - Supports elevated commands via UAC when needed
 - Single instance enforcement (only one copy runs at a time)
 
 ## Requirements
 
 - Windows 10 or 11
-- winget installed (included with App Installer)
+- winget installed
 - .NET Framework 4.8 (built into Windows 10 and 11)
 
 ## Installation
 
-1. Download the compiled EXE (and optional EZWinGet.ini)
-2. Put the files in the same folder
-3. Run `EZWinGet.exe`
-4. The app will create the settings file and add itself to startup
+1. Download the compiled EXE
+2. Run `EZWinGet.exe`
+3. The app will create the settings file and add itself to startup
 
 ## Notes
 
