@@ -22,7 +22,7 @@ EZWinGet runs quietly in the system tray and gives you quick access to check for
 On first run, the app creates an `EZWinGet.ini` file in the same folder. You can edit it to change behavior:
 
 [Settings]
-UpdateIntervalHours=8
+UpdateIntervalHours=0
 ShowExitOption=true
 ShowWinGetConsoleOption=true
 CheckUpdatesOnUnlock=true

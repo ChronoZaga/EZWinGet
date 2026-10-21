@@ -96,7 +96,7 @@ namespace EZWinGet
                     "CheckUpdatesOnUnlock=true",
                     "ShowBlockUnblockOption=true"   // NEW
                 });
-                _updateIntervalHours = 8;
+                _updateIntervalHours = 0;
                 _showExitOption = true;
                 _showWinGetConsoleOption = true;
                 _checkUpdatesOnUnlock = true;
@@ -226,9 +226,20 @@ namespace EZWinGet
                 control.HandleCreated += (s, e) => action();
         }
 
+        // Windows "app mode": AppsUseLightTheme = 0 means dark (missing value means light)
+        private static bool IsSystemDarkMode()
+        {
+            using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
+                return key?.GetValue("AppsUseLightTheme") is int value && value == 0;
+        }
+
         // Dark colors for the form and its controls, plus a dark title bar and scrollbars
+        // Skipped when Windows is in light mode, leaving the default light look
         private static void ApplyDarkMode(Form form)
         {
+            if (!IsSystemDarkMode())
+                return;
+
             form.BackColor = DarkBack;
             form.ForeColor = DarkText;
             WhenHandleCreated(form, () =>
